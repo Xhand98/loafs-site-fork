@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Loafs - Leaderboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 860px; margin: 32px auto; padding: 0 16px; }
+    nav a { margin-right: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px; border-bottom: 1px solid #e5e5e5; text-align: left; }
+    .muted { opacity: .7; }
+  </style>
+</head>
+<body>
+  <h1>Leaderboard</h1>
+
+  <nav>
+    <a href="/">Home</a>
+    <a href="/leaderboard/">Leaderboard</a>
+  </nav>
+
+  <div id="status" class="muted" style="margin: 10px 0 14px;">Loading…</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:60px;">#</th>
+        <th>User</th>
+        <th>Loafs</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <p class="muted" style="margin-top:14px;">
+    This version updates when you refresh. (Realtime can be added later.)
+  </p>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/app.js"></script>
+  <script>
+    async function load() {
+      const status = document.getElementById("status");
+      const rows = document.getElementById("rows");
+
+      try {
+        const data = await window.LoafsApp.fetchLeaderboardTop(50);
+        rows.innerHTML = "";
+
+        data.forEach((r, i) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${window.LoafsApp.escapeHtml(r.username)}</td>
+            <td>${r.points}</td>
+          `;
+          rows.appendChild(tr);
+        });
+
+        status.textContent = "Loaded.";
+      } catch (e) {
+        status.textContent = "Error: " + (e?.message ?? String(e));
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
