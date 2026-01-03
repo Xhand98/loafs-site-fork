@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Loafs - My Loafs</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:860px;margin:32px auto;padding:0 16px}
+    nav a{margin-right:12px}
+    .card{border:1px solid #ddd;border-radius:12px;padding:14px;margin:12px 0}
+    button{padding:8px 12px;font-size:14px;cursor:pointer}
+    .muted{opacity:.7}
+    code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <h1>My Loafs</h1>
+
+  <nav>
+    <a href="../index.html">Home</a>
+    <a href="../leaderboard/index.html">Leaderboard</a>
+    <a href="../login/index.html">Login</a>
+    <a href="./index.html">My Loafs</a>
+  </nav>
+
+  <div id="panel" class="card">
+    <div class="muted">Loading session…</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/app.js"></script>
+  <script>
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    const panel = document.getElementById("panel");
+
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        panel.innerHTML = `
+          <div>You are not logged in.</div>
+          <div class="muted" style="margin-top:8px;">Go to <a href="../login/index.html">Login</a>.</div>
+        `;
+        return;
+      }
+
+      const user = session.user;
+      const twitchName = user.user_metadata?.preferred_username || user.user_metadata?.name || "(unknown)";
+      const twitchId = user.identities?.[0]?.id || user.id; // we’ll use this as the stable key
+
+      panel.innerHTML = `
+        <div><b>Logged in as:</b> ${window.LoafsApp.escapeHtml(twitchName)}</div>
+        <div class="muted" style="margin-top:8px;">Twitch ID (stable): <code>${window.LoafsApp.escapeHtml(twitchId)}</code></div>
+        <div id="points" style="margin-top:12px;">Loading your Loafs…</div>
+        <div style="margin-top:12px;">
+          <button id="logoutBtn">Logout</button>
+        </div>
+      `;
+
+      document.getElementById("logoutBtn").addEventListener("click", async () => {
+        await supabase.auth.signOut();
+        location.href = "../index.html";
+      });
+
+      // TEMP: lookup by username for now (we’ll improve DB in Part C)
+      const { data, error } = await supabase
+        .from("leaderboard")
+        .select("points, updated_at")
+        .eq("username", twitchName)
+        .maybeSingle();
+
+      const pointsEl = document.getElementById("points");
+      if (error) {
+        pointsEl.textContent = "Error loading points: " + error.message;
+      } else if (!data) {
+        pointsEl.innerHTML = `
+          <div><b>Loafs:</b> 0</div>
+          <div class="muted">No row yet for your username. (We’ll auto-create this next.)</div>
+        `;
+      } else {
+        pointsEl.innerHTML = `
+          <div><b>Loafs:</b> ${data.points}</div>
+          <div class="muted">Updated: ${data.updated_at}</div>
+        `;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
