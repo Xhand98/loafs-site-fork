@@ -61,7 +61,7 @@
           <div class="card-body">
             <div class="text-lg font-bold">How it works</div>
             <div class="text-sm opacity-70">
-              Login with Twitch to see your Loaf Points and your rank on the selected board.
+              Login with Twitch to view your Loaf Points, see your rank on the leaderboard, and rankings in each game.
             </div>
           </div>
         </div>
@@ -135,8 +135,9 @@
   // ===============================
 
   // EDIT THESE BOARDS ANY TIME
+  // NOTE: General label changed per your request
   const BOARDS = [
-    { id: "general", label: "General (All Points)" },
+    { id: "general", label: "Leaderboard (General)" },
     { id: "rivals2", label: "Rivals of Aether 2" },
     { id: "melee", label: "Melee" }
   ];
@@ -257,6 +258,22 @@
     return await res.json();
   }
 
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[m]));
+  }
+
+  // Read-only lookup: find the user inside the currently loaded leaderboard data.
+  // This prevents "creating" them on other boards just by viewing it.
+  function findUserInCurrentBoardById(twitchUserId) {
+    const idx = (lastLeaderboardData || []).findIndex(p =>
+      String(p.twitch_user_id || "") === String(twitchUserId || "")
+    );
+    if (idx === -1) return { points: 0, rank: null };
+    return { points: Number(lastLeaderboardData[idx].points || 0), rank: idx + 1 };
+  }
+
   function renderLeaderboardPage() {
     const el = document.getElementById("lb");
     el.innerHTML = "";
@@ -295,7 +312,7 @@
     document.getElementById("lbNext").disabled = (lbPage >= totalPages);
   }
 
-  // ✅ Refresh leaderboard, but don't spam loading or re-render if unchanged
+  // Refresh leaderboard, but don't spam loading or re-render if unchanged
   async function refreshLeaderboard() {
     // Only show loading if request is actually slow
     let loadingTimer = setTimeout(() => setStatus("Loading leaderboard…"), 600);
@@ -329,6 +346,9 @@
     }
   }
 
+  // ✅ IMPORTANT BEHAVIOR:
+  // - Logging in can "register" users ONLY on the GENERAL board (wallet)
+  // - Switching to other boards will NOT auto-create them there
   async function refreshMe() {
     const token = getToken();
     if (!token) {
@@ -348,30 +368,42 @@
       return;
     }
 
-    setStatus("Loading your points…");
-    const json = await apiGet("me", {
-      twitch_user_id: me.id,
-      twitch_login: me.login,
-      display_name: me.display_name,
-      board: currentBoard
-    });
-
-    // Show ONLY display_name
+    // Show ONLY display_name (no duplicates)
     document.getElementById("meName").textContent = me.display_name;
 
-    document.getElementById("mePoints").textContent = json.points ?? 0;
-    document.getElementById("meRank").textContent = json.rank ? ("#" + json.rank) : "—";
-    document.getElementById("meTotal").textContent = json.total ?? 0;
+    // Always hit GENERAL for the "wallet"/identity and totals.
+    // This is the ONLY board we allow auto-registering on login.
+    setStatus("Loading your points…");
+    let generalJson;
+    try {
+      generalJson = await apiGet("me", {
+        twitch_user_id: me.id,
+        twitch_login: me.login,
+        display_name: me.display_name,
+        board: "general"
+      });
+    } catch (e) {
+      generalJson = { points: 0, rank: null, total: 0 };
+    }
+
+    // Totals always from general endpoint
+    document.getElementById("meTotal").textContent = generalJson.total ?? 0;
+
+    if (currentBoard === "general") {
+      // On general board, show exact server truth
+      document.getElementById("mePoints").textContent = generalJson.points ?? 0;
+      document.getElementById("meRank").textContent = generalJson.rank ? ("#" + generalJson.rank) : "—";
+    } else {
+      // On game boards, DO NOT call /me for that board (prevents auto-creating them)
+      // Read-only display from the currently loaded leaderboard snapshot.
+      const found = findUserInCurrentBoardById(me.id);
+      document.getElementById("mePoints").textContent = found.points ?? 0;
+      document.getElementById("meRank").textContent = found.rank ? ("#" + found.rank) : "—";
+    }
 
     document.getElementById("meCard").classList.remove("hidden");
     setAuthUI(true);
     setStatus("");
-  }
-
-  function escapeHtml(s){
-    return String(s ?? "").replace(/[&<>"']/g, m => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-    }[m]));
   }
 
   (async function init(){
@@ -393,7 +425,7 @@
     await refreshLeaderboard();
     await refreshMe();
 
-    // ✅ Auto-refresh every 25 seconds (no page reload)
+    // Auto-refresh every 25 seconds (no page reload)
     setInterval(refreshLeaderboard, 25000);
   })();
 </script>
