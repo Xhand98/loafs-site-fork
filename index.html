@@ -81,7 +81,7 @@
         </div>
       </div>
 
-      <!-- RIGHT: Redeems (disabled) -->
+      <!-- RIGHT: Redeems (disabled for now) -->
       <div class="lg:col-span-3 lg:sticky lg:top-4 space-y-4">
         <div class="card bg-base-200 shadow">
           <div class="card-body">
@@ -132,8 +132,11 @@
 
   const REDIRECT_URI = location.origin + location.pathname.replace(/\/[^\/]*$/, "/callback.html");
 
-  // Cache Twitch user to avoid repeated calls (faster)
+  // Cache Twitch user to avoid repeated calls
   let cachedMe = null;
+
+  // Used to avoid re-render + avoid loading spam when nothing changes
+  let lastLeaderboardHash = "";
 
   function setStatus(msg){
     document.getElementById("status").textContent = msg || "";
@@ -173,6 +176,8 @@
     sel.onchange = async () => {
       currentBoard = sel.value;
       localStorage.setItem("loaf_board", currentBoard);
+      // Force a redraw on board switch
+      lastLeaderboardHash = "";
       await refreshLeaderboard();
       await refreshMe();
     };
@@ -232,35 +237,52 @@
     return await res.json();
   }
 
+  // ✅ Leaderboard refresh that DOES NOT spam "Loading..." when nothing changes
   async function refreshLeaderboard() {
-    setStatus("Loading leaderboard…");
-    const json = await apiGet("leaderboard", { board: currentBoard });
+    // Only show loading if request is actually slow
+    let loadingTimer = setTimeout(() => setStatus("Loading leaderboard…"), 600);
 
-    document.getElementById("updated").textContent =
-      json.updated ? ("Updated: " + json.updated) : "";
+    try {
+      const json = await apiGet("leaderboard", { board: currentBoard });
 
-    const el = document.getElementById("lb");
-    el.innerHTML = "";
+      clearTimeout(loadingTimer);
+      if (!getToken()) setStatus("");
 
-    (json.data || []).slice(0, 50).forEach((p, i) => {
-      let icon = "fa-user", extra = "";
-      if (i === 0) { icon = "fa-crown"; extra = "text-yellow-400"; }
-      else if (i === 1) { icon = "fa-medal"; extra = "text-gray-300"; }
-      else if (i === 2) { icon = "fa-medal"; extra = "text-orange-400"; }
+      document.getElementById("updated").textContent =
+        json.updated ? ("Updated: " + json.updated) : "";
 
-      el.innerHTML += `
-        <div class="flex items-center justify-between bg-base-300 rounded-xl px-4 py-3">
-          <div class="flex items-center gap-3">
-            <i class="fa-solid ${icon} ${extra}"></i>
-            <div class="font-bold">#${i+1}</div>
-            <div>${escapeHtml(p.display_name || p.twitch_login || "")}</div>
+      const data = json.data || [];
+      const newHash = JSON.stringify(data);
+
+      // If nothing changed, do nothing (no re-render, no flicker, no spam)
+      if (newHash === lastLeaderboardHash) return;
+      lastLeaderboardHash = newHash;
+
+      const el = document.getElementById("lb");
+      el.innerHTML = "";
+
+      data.slice(0, 50).forEach((p, i) => {
+        let icon = "fa-user", extra = "";
+        if (i === 0) { icon = "fa-crown"; extra = "text-yellow-400"; }
+        else if (i === 1) { icon = "fa-medal"; extra = "text-gray-300"; }
+        else if (i === 2) { icon = "fa-medal"; extra = "text-orange-400"; }
+
+        el.innerHTML += `
+          <div class="flex items-center justify-between bg-base-300 rounded-xl px-4 py-3">
+            <div class="flex items-center gap-3">
+              <i class="fa-solid ${icon} ${extra}"></i>
+              <div class="font-bold">#${i+1}</div>
+              <div>${escapeHtml(p.display_name || p.twitch_login || "")}</div>
+            </div>
+            <div class="badge badge-primary text-lg">${p.points}</div>
           </div>
-          <div class="badge badge-primary text-lg">${p.points}</div>
-        </div>
-      `;
-    });
+        `;
+      });
 
-    if (!getToken()) setStatus("");
+    } catch (e) {
+      clearTimeout(loadingTimer);
+      setStatus("Leaderboard update failed (retrying)…");
+    }
   }
 
   async function refreshMe() {
@@ -290,7 +312,9 @@
       board: currentBoard
     });
 
+    // Show ONLY display name (no duplicate parentheses)
     document.getElementById("meName").textContent = me.display_name;
+
     document.getElementById("mePoints").textContent = json.points ?? 0;
     document.getElementById("meRank").textContent = json.rank ? ("#" + json.rank) : "—";
     document.getElementById("meTotal").textContent = json.total ?? 0;
@@ -309,11 +333,15 @@
   (async function init(){
     buildBoardsUI();
     setAuthUI(!!getToken());
+
+    // Ensure first draw happens
+    lastLeaderboardHash = "";
+
     await refreshLeaderboard();
     await refreshMe();
 
-    // Poll less often so Apps Script doesn’t feel sluggish
-    setInterval(refreshLeaderboard, 15000);
+    // ✅ Auto-refresh every 25 seconds (no page reload)
+    setInterval(refreshLeaderboard, 25000);
   })();
 </script>
 </body>
