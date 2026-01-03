@@ -77,6 +77,19 @@
             </div>
 
             <div id="lb" class="mt-3 space-y-2"></div>
+
+            <!-- Pagination -->
+            <div class="mt-4 flex items-center justify-between">
+              <button id="lbPrev" class="btn btn-sm btn-outline" disabled>
+                <i class="fa-solid fa-chevron-left"></i>
+              </button>
+
+              <div id="lbPageInfo" class="text-sm opacity-70">Page 1 of 1</div>
+
+              <button id="lbNext" class="btn btn-sm btn-outline" disabled>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -129,14 +142,18 @@
   ];
 
   let currentBoard = localStorage.getItem("loaf_board") || BOARDS[0].id;
-
   const REDIRECT_URI = location.origin + location.pathname.replace(/\/[^\/]*$/, "/callback.html");
 
   // Cache Twitch user to avoid repeated calls
   let cachedMe = null;
 
-  // Used to avoid re-render + avoid loading spam when nothing changes
+  // Pagination state
+  const PAGE_SIZE = 12;
+  let lbPage = 1;
+
+  // Used to avoid re-render when nothing changed
   let lastLeaderboardHash = "";
+  let lastLeaderboardData = [];
 
   function setStatus(msg){
     document.getElementById("status").textContent = msg || "";
@@ -176,8 +193,11 @@
     sel.onchange = async () => {
       currentBoard = sel.value;
       localStorage.setItem("loaf_board", currentBoard);
-      // Force a redraw on board switch
+
+      // Reset paging + force redraw for new board
+      lbPage = 1;
       lastLeaderboardHash = "";
+
       await refreshLeaderboard();
       await refreshMe();
     };
@@ -237,7 +257,45 @@
     return await res.json();
   }
 
-  // ✅ Leaderboard refresh that DOES NOT spam "Loading..." when nothing changes
+  function renderLeaderboardPage() {
+    const el = document.getElementById("lb");
+    el.innerHTML = "";
+
+    const total = lastLeaderboardData.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+    // Clamp page
+    lbPage = Math.min(Math.max(1, lbPage), totalPages);
+
+    const start = (lbPage - 1) * PAGE_SIZE;
+    const pageItems = lastLeaderboardData.slice(start, start + PAGE_SIZE);
+
+    pageItems.forEach((p, idx) => {
+      const rank = start + idx + 1;
+
+      let icon = "fa-user", extra = "";
+      if (rank === 1) { icon = "fa-crown"; extra = "text-yellow-400"; }
+      else if (rank === 2) { icon = "fa-medal"; extra = "text-gray-300"; }
+      else if (rank === 3) { icon = "fa-medal"; extra = "text-orange-400"; }
+
+      el.innerHTML += `
+        <div class="flex items-center justify-between bg-base-300 rounded-xl px-4 py-3">
+          <div class="flex items-center gap-3">
+            <i class="fa-solid ${icon} ${extra}"></i>
+            <div class="font-bold">#${rank}</div>
+            <div>${escapeHtml(p.display_name || p.twitch_login || "")}</div>
+          </div>
+          <div class="badge badge-primary text-lg">${p.points}</div>
+        </div>
+      `;
+    });
+
+    document.getElementById("lbPageInfo").textContent = `Page ${lbPage} of ${totalPages}`;
+    document.getElementById("lbPrev").disabled = (lbPage <= 1);
+    document.getElementById("lbNext").disabled = (lbPage >= totalPages);
+  }
+
+  // ✅ Refresh leaderboard, but don't spam loading or re-render if unchanged
   async function refreshLeaderboard() {
     // Only show loading if request is actually slow
     let loadingTimer = setTimeout(() => setStatus("Loading leaderboard…"), 600);
@@ -254,31 +312,17 @@
       const data = json.data || [];
       const newHash = JSON.stringify(data);
 
-      // If nothing changed, do nothing (no re-render, no flicker, no spam)
+      // If nothing changed, do nothing
       if (newHash === lastLeaderboardHash) return;
+
       lastLeaderboardHash = newHash;
+      lastLeaderboardData = data;
 
-      const el = document.getElementById("lb");
-      el.innerHTML = "";
+      // Clamp page if needed
+      const totalPages = Math.max(1, Math.ceil(lastLeaderboardData.length / PAGE_SIZE));
+      if (lbPage > totalPages) lbPage = totalPages;
 
-      data.slice(0, 50).forEach((p, i) => {
-        let icon = "fa-user", extra = "";
-        if (i === 0) { icon = "fa-crown"; extra = "text-yellow-400"; }
-        else if (i === 1) { icon = "fa-medal"; extra = "text-gray-300"; }
-        else if (i === 2) { icon = "fa-medal"; extra = "text-orange-400"; }
-
-        el.innerHTML += `
-          <div class="flex items-center justify-between bg-base-300 rounded-xl px-4 py-3">
-            <div class="flex items-center gap-3">
-              <i class="fa-solid ${icon} ${extra}"></i>
-              <div class="font-bold">#${i+1}</div>
-              <div>${escapeHtml(p.display_name || p.twitch_login || "")}</div>
-            </div>
-            <div class="badge badge-primary text-lg">${p.points}</div>
-          </div>
-        `;
-      });
-
+      renderLeaderboardPage();
     } catch (e) {
       clearTimeout(loadingTimer);
       setStatus("Leaderboard update failed (retrying)…");
@@ -312,7 +356,7 @@
       board: currentBoard
     });
 
-    // Show ONLY display name (no duplicate parentheses)
+    // Show ONLY display_name
     document.getElementById("meName").textContent = me.display_name;
 
     document.getElementById("mePoints").textContent = json.points ?? 0;
@@ -334,9 +378,18 @@
     buildBoardsUI();
     setAuthUI(!!getToken());
 
-    // Ensure first draw happens
-    lastLeaderboardHash = "";
+    // Pagination buttons
+    document.getElementById("lbPrev").onclick = () => {
+      lbPage--;
+      renderLeaderboardPage();
+    };
+    document.getElementById("lbNext").onclick = () => {
+      lbPage++;
+      renderLeaderboardPage();
+    };
 
+    // First draw
+    lastLeaderboardHash = "";
     await refreshLeaderboard();
     await refreshMe();
 
