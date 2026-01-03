@@ -16,7 +16,9 @@
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-3xl font-bold">🍞 Loaf Points</h1>
-        <div class="opacity-70">Compete to Get Ranked • Redeem Loafs on Twitch • Track your Loaf Points Here</div>
+        <div class="opacity-70">
+          Compete to Get Ranked • Redeem Loafs on Twitch • Track your Loaf Points Here
+        </div>
         <div id="status" class="text-sm opacity-70 mt-1"></div>
       </div>
 
@@ -29,9 +31,9 @@
       </div>
     </div>
 
-    <!-- 3-column layout (desktop). Mobile stacks. -->
+    <!-- Layout -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-      <!-- LEFT: Logged-in box -->
+      <!-- LEFT -->
       <div class="lg:col-span-3 lg:sticky lg:top-4 space-y-4">
         <div id="meCard" class="card bg-base-200 shadow hidden">
           <div class="card-body">
@@ -39,22 +41,14 @@
             <div id="meName" class="text-xl font-bold"></div>
 
             <div class="mt-3 grid grid-cols-1 gap-3">
-              <!-- TOP: TOTAL LOAF POINTS (GENERAL WALLET) -->
               <div class="bg-base-300 rounded-xl p-3">
                 <div class="text-sm opacity-70">Loaf Points (current)</div>
                 <div id="meTotalPoints" class="text-3xl font-extrabold">0</div>
               </div>
 
-              <!-- CURRENT BOARD RANK -->
               <div class="bg-base-300 rounded-xl p-3">
                 <div class="text-sm opacity-70">Board rank</div>
                 <div id="meRank" class="text-3xl font-extrabold">—</div>
-              </div>
-
-              <!-- CURRENT BOARD POINTS -->
-              <div class="bg-base-300 rounded-xl p-3">
-                <div class="text-sm opacity-70">Points on this board</div>
-                <div id="meBoardPoints" class="text-2xl font-bold">0</div>
               </div>
             </div>
           </div>
@@ -64,13 +58,14 @@
           <div class="card-body">
             <div class="text-lg font-bold">How it works</div>
             <div class="text-sm opacity-70">
-              Login with Twitch to view your Loaf Points, see your rank on the leaderboard, and rankings in each game.
+              Login with Twitch to view your Loaf Points, see your rank on the leaderboard,
+              and rankings in each game.
             </div>
           </div>
         </div>
       </div>
 
-      <!-- CENTER: Leaderboard -->
+      <!-- CENTER -->
       <div class="lg:col-span-6">
         <div class="card bg-base-200 shadow">
           <div class="card-body">
@@ -81,7 +76,6 @@
 
             <div id="lb" class="mt-3 space-y-2"></div>
 
-            <!-- Pagination -->
             <div class="mt-4 flex items-center justify-between">
               <button id="lbPrev" class="btn btn-sm btn-outline" disabled>
                 <i class="fa-solid fa-chevron-left"></i>
@@ -97,7 +91,7 @@
         </div>
       </div>
 
-      <!-- RIGHT: Redeems (disabled for now) -->
+      <!-- RIGHT -->
       <div class="lg:col-span-3 lg:sticky lg:top-4 space-y-4">
         <div class="card bg-base-200 shadow">
           <div class="card-body">
@@ -112,10 +106,6 @@
               <button class="btn btn-secondary btn-disabled">📜 Force Ruleset (50)</button>
               <button class="btn btn-secondary btn-disabled">📣 Highlight Me (25)</button>
             </div>
-
-            <div class="mt-3 text-xs opacity-70">
-              (Disabled) We’ll turn these on once tournament rules are finalized.
-            </div>
           </div>
         </div>
 
@@ -123,7 +113,7 @@
           <div class="card-body">
             <div class="text-lg font-bold">Tip</div>
             <div class="text-sm opacity-70">
-              Use the dropdown up top to switch leaderboards per game.
+              Use the dropdown up top to switch between the main Leaderboard & Tournament Ranks for Each Game.
             </div>
           </div>
         </div>
@@ -132,12 +122,9 @@
   </div>
 
 <script>
-  // ====== REQUIRED SETTINGS ======
   const API_BASE = "https://script.google.com/macros/s/AKfycbwg_pn2J8399br-rnzHT36BG2JtIgB1nPEfya9PTV9TD__kwidzJUZZqRfb-o7I5baHkA/exec";
   const TWITCH_CLIENT_ID = "h450xh8v0w6osff946wcqnb8vr2st4";
-  // ===============================
 
-  // Boards
   const BOARDS = [
     { id: "general", label: "Leaderboard (General)" },
     { id: "rivals2", label: "Rivals of Aether 2" },
@@ -147,273 +134,148 @@
   let currentBoard = localStorage.getItem("loaf_board") || BOARDS[0].id;
   const REDIRECT_URI = location.origin + location.pathname.replace(/\/[^\/]*$/, "/callback.html");
 
-  // Cache Twitch user
   let cachedMe = null;
-
-  // Pagination state
   const PAGE_SIZE = 12;
   let lbPage = 1;
-
-  // Leaderboard cache
   let lastLeaderboardHash = "";
   let lastLeaderboardData = [];
 
-  function setStatus(msg){
-    document.getElementById("status").textContent = msg || "";
-  }
+  function setStatus(msg){ document.getElementById("status").textContent = msg || ""; }
+  function getToken(){ return sessionStorage.getItem("twitch_token"); }
 
-  function setAuthUI(isLoggedIn) {
+  function setAuthUI(isLoggedIn){
     const btn = document.getElementById("authBtn");
     const hint = document.getElementById("loginHint");
-
-    if (isLoggedIn) {
+    if(isLoggedIn){
       btn.classList.remove("btn-primary");
       btn.classList.add("btn-outline");
       btn.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i> Logout';
-      if (hint) hint.classList.add("hidden");
+      hint.classList.add("hidden");
     } else {
       btn.classList.add("btn-primary");
       btn.classList.remove("btn-outline");
       btn.innerHTML = '<i class="fa-brands fa-twitch"></i> Login';
-      if (hint) hint.classList.remove("hidden");
+      hint.classList.remove("hidden");
     }
   }
 
-  function getToken(){ return sessionStorage.getItem("twitch_token"); }
-
-  function buildBoardsUI() {
+  function buildBoardsUI(){
     const sel = document.getElementById("boardSelect");
     sel.innerHTML = "";
-
-    for (const b of BOARDS) {
-      const opt = document.createElement("option");
-      opt.value = b.id;
-      opt.textContent = b.label;
-      if (b.id === currentBoard) opt.selected = true;
-      sel.appendChild(opt);
-    }
-
-    sel.onchange = async () => {
-      currentBoard = sel.value;
-      localStorage.setItem("loaf_board", currentBoard);
-
-      lbPage = 1;
-      lastLeaderboardHash = "";
-
-      await refreshLeaderboard();
-      await refreshMe();
+    BOARDS.forEach(b=>{
+      const o=document.createElement("option");
+      o.value=b.id; o.textContent=b.label;
+      if(b.id===currentBoard) o.selected=true;
+      sel.appendChild(o);
+    });
+    sel.onchange=async()=>{
+      currentBoard=sel.value;
+      localStorage.setItem("loaf_board",currentBoard);
+      lbPage=1; lastLeaderboardHash="";
+      await refreshLeaderboard(); await refreshMe();
     };
   }
 
-  document.getElementById("authBtn").onclick = () => {
-    const token = getToken();
-
-    // Logout
-    if (token) {
+  document.getElementById("authBtn").onclick=()=>{
+    if(getToken()){
       sessionStorage.removeItem("twitch_token");
-      cachedMe = null;
+      cachedMe=null;
       setAuthUI(false);
-      setStatus("");
       document.getElementById("meCard").classList.add("hidden");
       return;
     }
-
-    // Login
-    const state = crypto.getRandomValues(new Uint32Array(4)).join("-");
-    sessionStorage.setItem("oauth_state", state);
-
-    const url = new URL("https://id.twitch.tv/oauth2/authorize");
-    url.searchParams.set("client_id", TWITCH_CLIENT_ID);
-    url.searchParams.set("redirect_uri", REDIRECT_URI);
-    url.searchParams.set("response_type", "token");
-    url.searchParams.set("state", state);
-
-    location.href = url.toString();
+    const state=crypto.getRandomValues(new Uint32Array(4)).join("-");
+    sessionStorage.setItem("oauth_state",state);
+    const url=new URL("https://id.twitch.tv/oauth2/authorize");
+    url.searchParams.set("client_id",TWITCH_CLIENT_ID);
+    url.searchParams.set("redirect_uri",REDIRECT_URI);
+    url.searchParams.set("response_type","token");
+    url.searchParams.set("state",state);
+    location.href=url;
   };
 
-  async function twitchGetMe() {
-    if (cachedMe) return cachedMe;
-
-    const token = getToken();
-    if (!token) return null;
-
-    const res = await fetch("https://api.twitch.tv/helix/users", {
-      headers: {
-        "Client-Id": TWITCH_CLIENT_ID,
-        "Authorization": "Bearer " + token
-      }
-    });
-
-    if (!res.ok) return null;
-
-    const json = await res.json();
-    cachedMe = (json.data && json.data[0]) ? json.data[0] : null;
-    return cachedMe;
+  async function twitchGetMe(){
+    if(cachedMe) return cachedMe;
+    const t=getToken(); if(!t) return null;
+    const r=await fetch("https://api.twitch.tv/helix/users",{headers:{
+      "Client-Id":TWITCH_CLIENT_ID,"Authorization":"Bearer "+t}});
+    if(!r.ok) return null;
+    const j=await r.json(); cachedMe=j.data?.[0]||null; return cachedMe;
   }
 
-  async function apiGet(route, params={}) {
-    const url = new URL(API_BASE);
-    url.searchParams.set("route", route);
-    for (const [k,v] of Object.entries(params)) url.searchParams.set(k, v);
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    return await res.json();
+  async function apiGet(route,params={}){
+    const u=new URL(API_BASE);
+    u.searchParams.set("route",route);
+    Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));
+    return (await fetch(u,{cache:"no-store"})).json();
   }
 
   function escapeHtml(s){
-    return String(s ?? "").replace(/[&<>"']/g, m => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-    }[m]));
+    return String(s??"").replace(/[&<>"']/g,m=>(
+      {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]
+    ));
   }
 
-  // Read-only lookup (prevents auto-creating on game boards)
-  function findUserInCurrentBoardById(twitchUserId) {
-    const idx = (lastLeaderboardData || []).findIndex(p =>
-      String(p.twitch_user_id || "") === String(twitchUserId || "")
-    );
-    if (idx === -1) return { points: 0, rank: null };
-    return { points: Number(lastLeaderboardData[idx].points || 0), rank: idx + 1 };
+  function findUserInCurrentBoardById(id){
+    const i=(lastLeaderboardData||[]).findIndex(p=>String(p.twitch_user_id||"")===String(id));
+    return i===-1?{rank:null}:{rank:i+1};
   }
 
-  function renderLeaderboardPage() {
-    const el = document.getElementById("lb");
-    el.innerHTML = "";
-
-    const total = lastLeaderboardData.length;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-    lbPage = Math.min(Math.max(1, lbPage), totalPages);
-
-    const start = (lbPage - 1) * PAGE_SIZE;
-    const pageItems = lastLeaderboardData.slice(start, start + PAGE_SIZE);
-
-    pageItems.forEach((p, idx) => {
-      const rank = start + idx + 1;
-
-      let icon = "fa-user", extra = "";
-      if (rank === 1) { icon = "fa-crown"; extra = "text-yellow-400"; }
-      else if (rank === 2) { icon = "fa-medal"; extra = "text-gray-300"; }
-      else if (rank === 3) { icon = "fa-medal"; extra = "text-orange-400"; }
-
-      el.innerHTML += `
+  function renderLeaderboardPage(){
+    const el=document.getElementById("lb"); el.innerHTML="";
+    const total=lastLeaderboardData.length;
+    const pages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+    lbPage=Math.min(Math.max(1,lbPage),pages);
+    const start=(lbPage-1)*PAGE_SIZE;
+    lastLeaderboardData.slice(start,start+PAGE_SIZE).forEach((p,i)=>{
+      const rank=start+i+1;
+      el.innerHTML+=`
         <div class="flex items-center justify-between bg-base-300 rounded-xl px-4 py-3">
           <div class="flex items-center gap-3">
-            <i class="fa-solid ${icon} ${extra}"></i>
             <div class="font-bold">#${rank}</div>
-            <div>${escapeHtml(p.display_name || p.twitch_login || "")}</div>
+            <div>${escapeHtml(p.display_name||p.twitch_login||"")}</div>
           </div>
           <div class="badge badge-primary text-lg">${p.points}</div>
-        </div>
-      `;
+        </div>`;
     });
-
-    document.getElementById("lbPageInfo").textContent = `Page ${lbPage} of ${totalPages}`;
-    document.getElementById("lbPrev").disabled = (lbPage <= 1);
-    document.getElementById("lbNext").disabled = (lbPage >= totalPages);
+    document.getElementById("lbPageInfo").textContent=`Page ${lbPage} of ${pages}`;
+    lbPrev.disabled=lbPage<=1; lbNext.disabled=lbPage>=pages;
   }
 
-  async function refreshLeaderboard() {
-    let loadingTimer = setTimeout(() => setStatus("Loading leaderboard…"), 600);
-
-    try {
-      const json = await apiGet("leaderboard", { board: currentBoard });
-
-      clearTimeout(loadingTimer);
-      if (!getToken()) setStatus("");
-
-      document.getElementById("updated").textContent =
-        json.updated ? ("Updated: " + json.updated) : "";
-
-      const data = json.data || [];
-      const newHash = JSON.stringify(data);
-
-      if (newHash === lastLeaderboardHash) return;
-
-      lastLeaderboardHash = newHash;
-      lastLeaderboardData = data;
-
-      const totalPages = Math.max(1, Math.ceil(lastLeaderboardData.length / PAGE_SIZE));
-      if (lbPage > totalPages) lbPage = totalPages;
-
+  async function refreshLeaderboard(){
+    const t=setTimeout(()=>setStatus("Loading leaderboard…"),600);
+    try{
+      const j=await apiGet("leaderboard",{board:currentBoard});
+      clearTimeout(t); setStatus("");
+      document.getElementById("updated").textContent=j.updated?("Updated: "+j.updated):"";
+      const h=JSON.stringify(j.data||[]);
+      if(h===lastLeaderboardHash) return;
+      lastLeaderboardHash=h; lastLeaderboardData=j.data||[];
       renderLeaderboardPage();
-    } catch (e) {
-      clearTimeout(loadingTimer);
-      setStatus("Leaderboard update failed (retrying)…");
-    }
+    }catch{ clearTimeout(t); setStatus("Leaderboard update failed…"); }
   }
 
-  // Always registers wallet on GENERAL only.
-  // Top box shows GENERAL wallet points.
-  async function refreshMe() {
-    const token = getToken();
-    if (!token) {
-      setAuthUI(false);
-      return;
-    }
+  async function refreshMe(){
+    const t=getToken(); if(!t){ setAuthUI(false); return; }
+    const me=await twitchGetMe(); if(!me) return;
+    document.getElementById("meName").textContent=me.display_name;
 
-    setStatus("Checking login…");
-    const me = await twitchGetMe();
+    const g=await apiGet("me",{twitch_user_id:me.id,twitch_login:me.login,display_name:me.display_name,board:"general"});
+    document.getElementById("meTotalPoints").textContent=g.points??0;
 
-    if (!me) {
-      sessionStorage.removeItem("twitch_token");
-      cachedMe = null;
-      setAuthUI(false);
-      document.getElementById("meCard").classList.add("hidden");
-      setStatus("");
-      return;
-    }
-
-    document.getElementById("meName").textContent = me.display_name;
-
-    setStatus("Loading your points…");
-    let generalJson;
-    try {
-      generalJson = await apiGet("me", {
-        twitch_user_id: me.id,
-        twitch_login: me.login,
-        display_name: me.display_name,
-        board: "general"
-      });
-    } catch (e) {
-      generalJson = { points: 0, rank: null };
-    }
-
-    // Wallet total
-    document.getElementById("meTotalPoints").textContent = generalJson.points ?? 0;
-
-    // Board-specific display
-    if (currentBoard === "general") {
-      document.getElementById("meBoardPoints").textContent = generalJson.points ?? 0;
-      document.getElementById("meRank").textContent = generalJson.rank ? ("#" + generalJson.rank) : "—";
-    } else {
-      const found = findUserInCurrentBoardById(me.id);
-      document.getElementById("meBoardPoints").textContent = found.points ?? 0;
-      document.getElementById("meRank").textContent = found.rank ? ("#" + found.rank) : "—";
-    }
+    const r=currentBoard==="general"?g.rank:findUserInCurrentBoardById(me.id).rank;
+    document.getElementById("meRank").textContent=r?("#"+r):"—";
 
     document.getElementById("meCard").classList.remove("hidden");
     setAuthUI(true);
-    setStatus("");
   }
 
-  (async function init(){
-    buildBoardsUI();
-    setAuthUI(!!getToken());
-
-    document.getElementById("lbPrev").onclick = () => {
-      lbPage--;
-      renderLeaderboardPage();
-    };
-    document.getElementById("lbNext").onclick = () => {
-      lbPage++;
-      renderLeaderboardPage();
-    };
-
-    lastLeaderboardHash = "";
-    await refreshLeaderboard();
-    await refreshMe();
-
-    // auto-refresh leaderboard every 25s
-    setInterval(refreshLeaderboard, 25000);
+  (async()=>{
+    buildBoardsUI(); setAuthUI(!!getToken());
+    lbPrev.onclick=()=>{lbPage--;renderLeaderboardPage();};
+    lbNext.onclick=()=>{lbPage++;renderLeaderboardPage();};
+    await refreshLeaderboard(); await refreshMe();
+    setInterval(refreshLeaderboard,25000);
   })();
 </script>
 </body>
