@@ -15,7 +15,7 @@
 
     <!-- LOGO + TITLE -->
     <div class="flex flex-col items-center text-center mb-4">
-      <img src="assets/logo.png" class="h-56 w-auto object-contain mb-3" />
+      <img src="assets/logo.png" class="h-56 w-auto object-contain mb-3" alt="Logo" />
       <h1 class="text-4xl font-extrabold flex items-center gap-2">🍞 Loaf Points</h1>
       <div class="opacity-70 mt-1">
         Compete to Get Ranked • Redeem Loafs on Twitch • Track your Loaf Points Here
@@ -27,8 +27,10 @@
     <div class="flex justify-end mb-2">
       <div class="flex items-center gap-2">
         <select id="boardSelect" class="select select-bordered"></select>
+
         <button id="authBtn" class="btn btn-primary">
-          <i class="fa-brands fa-twitch"></i> Login
+          <i class="fa-brands fa-twitch"></i>
+          <span id="authBtnText">Login</span>
         </button>
       </div>
     </div>
@@ -39,7 +41,7 @@
       <!-- LEFT PANEL -->
       <div class="lg:col-span-3 lg:sticky lg:top-4 space-y-4">
 
-        <!-- ACCOUNT SLOT (fixed height for alignment) -->
+        <!-- ACCOUNT SLOT (fixed height so columns align) -->
         <div class="min-h-[260px]">
 
           <!-- Loading -->
@@ -75,6 +77,7 @@
               </div>
             </div>
           </div>
+
         </div>
 
         <!-- HOW IT WORKS -->
@@ -82,8 +85,7 @@
           <div class="card-body">
             <div class="text-lg font-bold">How it works</div>
             <div class="text-sm opacity-70">
-              Login with Twitch to view your Loaf Points, see your rank on the leaderboard,
-              and rankings in each game.
+              Login with Twitch to view your Loaf Points, see your rank on the leaderboard, and rankings in each game.
             </div>
           </div>
         </div>
@@ -144,124 +146,246 @@
   </div>
 
 <script>
-const API_BASE="https://script.google.com/macros/s/AKfycbwg_pn2J8399br-rnzHT36BG2JtIgB1nPEfya9PTV9TD__kwidzJUZZqRfb-o7I5baHkA/exec";
-const TWITCH_CLIENT_ID="h450xh8v0w6osff946wcqnb8vr2st4";
+/** ====== CONFIG ====== **/
+const API_BASE = "https://script.google.com/macros/s/AKfycbwg_pn2J8399br-rnzHT36BG2JtIgB1nPEfya9PTV9TD__kwidzJUZZqRfb-o7I5baHkA/exec";
+const TWITCH_CLIENT_ID = "h450xh8v0w6osff946wcqnb8vr2st4";
 
-const BOARDS=[
-  {id:"general",label:"Leaderboard (General)"},
-  {id:"rivals2",label:"Rivals of Aether 2"},
-  {id:"rivals1",label:"Rivals of Aether"},
-  {id:"nasb2",label:"Nickelodeon All-Star Brawl 2"}
+/** Boards shown in dropdown **/
+const BOARDS = [
+  { id: "general", label: "Leaderboard (General)" },
+  { id: "rivals2", label: "Rivals of Aether 2" },
+  { id: "rivals1", label: "Rivals of Aether" },
+  { id: "nasb2",  label: "Nickelodeon All-Star Brawl 2" }
 ];
 
-let currentBoard=localStorage.getItem("loaf_board")||"general";
-if(!BOARDS.some(b=>b.id===currentBoard)){
-  currentBoard="general";
-  localStorage.setItem("loaf_board","general");
+let currentBoard = localStorage.getItem("loaf_board") || "general";
+if (!BOARDS.some(b => b.id === currentBoard)) {
+  currentBoard = "general";
+  localStorage.setItem("loaf_board", "general");
 }
 
-let cachedMe=null,lastLeaderboardData=[],lastLeaderboardHash="";
-const PAGE_SIZE=12;let lbPage=1;
+const PAGE_SIZE = 12;
+let lbPage = 1;
+let lastLeaderboardData = [];
+let lastLeaderboardHash = "";
 
-const $=id=>document.getElementById(id);
-const getToken=()=>sessionStorage.getItem("twitch_token");
+/** ====== HELPERS ====== **/
+const $ = (id) => document.getElementById(id);
+const getToken = () => sessionStorage.getItem("twitch_token");
 
-function topIcon(r){
-  if(r===1)return'<i class="fa-solid fa-crown text-yellow-400"></i>';
-  if(r===2)return'<i class="fa-solid fa-medal text-gray-300"></i>';
-  if(r===3)return'<i class="fa-solid fa-medal text-orange-400"></i>';
-  return'<i class="fa-solid fa-user opacity-60"></i>';
+function setStatus(msg) {
+  $("status").textContent = msg || "";
 }
 
-function apiGet(route,params={}){
-  const u=new URL(API_BASE);
-  u.searchParams.set("route",route);
-  Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));
-  return fetch(u,{cache:"no-store"}).then(r=>r.json());
+function updateAuthButtonUI() {
+  const hasToken = !!getToken();
+  $("authBtnText").textContent = hasToken ? "Logout" : "Login";
+  // keep twitch icon always, but swap button style slightly if you want:
+  $("authBtn").classList.toggle("btn-error", hasToken);
+  $("authBtn").classList.toggle("btn-primary", !hasToken);
 }
 
-function renderLeaderboard(){
-  const el=$("lb");el.innerHTML="";
-  const pages=Math.max(1,Math.ceil(lastLeaderboardData.length/PAGE_SIZE));
-  lbPage=Math.min(Math.max(1,lbPage),pages);
-  const start=(lbPage-1)*PAGE_SIZE;
-  lastLeaderboardData.slice(start,start+PAGE_SIZE).forEach((p,i)=>{
-    const rank=start+i+1;
-    el.innerHTML+=`
+function topIcon(rank) {
+  if (rank === 1) return '<i class="fa-solid fa-crown text-yellow-400"></i>';
+  if (rank === 2) return '<i class="fa-solid fa-medal text-gray-300"></i>';
+  if (rank === 3) return '<i class="fa-solid fa-medal text-orange-400"></i>';
+  return '<i class="fa-solid fa-user opacity-60"></i>';
+}
+
+function apiGet(route, params = {}) {
+  const u = new URL(API_BASE);
+  u.searchParams.set("route", route);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  return fetch(u.toString(), { cache: "no-store" }).then(r => r.json());
+}
+
+/** ====== LEADERBOARD ====== **/
+function renderLeaderboard() {
+  const el = $("lb");
+  el.innerHTML = "";
+
+  const pages = Math.max(1, Math.ceil(lastLeaderboardData.length / PAGE_SIZE));
+  lbPage = Math.min(Math.max(1, lbPage), pages);
+
+  const start = (lbPage - 1) * PAGE_SIZE;
+  const slice = lastLeaderboardData.slice(start, start + PAGE_SIZE);
+
+  slice.forEach((p, i) => {
+    const rank = start + i + 1;
+    const name = p.display_name || p.twitch_login || "";
+    const pts = (p.points ?? 0);
+
+    el.innerHTML += `
       <div class="flex items-center justify-between bg-base-300 rounded-xl px-4 py-3">
         <div class="flex items-center gap-3">
           ${topIcon(rank)}
           <div class="font-bold">#${rank}</div>
-          <div>${p.display_name||p.twitch_login||""}</div>
+          <div>${escapeHtml(name)}</div>
         </div>
-        <div class="badge badge-primary text-lg">${p.points}</div>
-      </div>`;
+        <div class="badge badge-primary text-lg">${pts}</div>
+      </div>
+    `;
   });
-  $("lbPageInfo").textContent=`Page ${lbPage} of ${pages}`;
-  $("lbPrev").disabled=lbPage<=1;
-  $("lbNext").disabled=lbPage>=pages;
+
+  $("lbPageInfo").textContent = `Page ${lbPage} of ${pages}`;
+  $("lbPrev").disabled = lbPage <= 1;
+  $("lbNext").disabled = lbPage >= pages;
 }
 
-async function refreshLeaderboard(){
-  const j=await apiGet("leaderboard",{board:currentBoard});
-  const h=JSON.stringify(j.data||[]);
-  if(h!==lastLeaderboardHash){
-    lastLeaderboardHash=h;
-    lastLeaderboardData=j.data||[];
+async function refreshLeaderboard({quietIfUnchanged=true} = {}) {
+  // Only show "Loading..." if something is actually changing OR first load
+  const firstLoad = (lastLeaderboardHash === "");
+  if (firstLoad) setStatus("Loading leaderboard...");
+
+  const j = await apiGet("leaderboard", { board: currentBoard });
+  const data = j.data || [];
+  const h = JSON.stringify(data);
+
+  if (!quietIfUnchanged || firstLoad || h !== lastLeaderboardHash) {
+    lastLeaderboardHash = h;
+    lastLeaderboardData = data;
+    $("updated").textContent = j.updated ? `Updated: ${new Date(j.updated).toLocaleTimeString()}` : "";
     renderLeaderboard();
+    setStatus("");
+  } else {
+    // no change -> keep status clean
+    setStatus("");
   }
 }
 
-async function refreshMe(){
-  if(!getToken())return;
+/** ====== ACCOUNT (ME) ====== **/
+async function refreshMe() {
+  if (!getToken()) {
+    // Logged out UI
+    $("acctLoading").classList.add("hidden");
+    $("meCard").classList.add("hidden");
+    $("loginHint").classList.remove("hidden");
+    updateAuthButtonUI();
+    return;
+  }
+
+  updateAuthButtonUI();
+
+  // Show loading placeholder
+  $("loginHint").classList.add("hidden");
   $("meCard").classList.add("hidden");
   $("acctLoading").classList.remove("hidden");
 
-  const r=await fetch("https://api.twitch.tv/helix/users",{
-    headers:{Authorization:"Bearer "+getToken(),"Client-Id":TWITCH_CLIENT_ID}
-  });
-  const me=(await r.json()).data?.[0];
-  if(!me)return;
+  try {
+    const r = await fetch("https://api.twitch.tv/helix/users", {
+      headers: {
+        "Authorization": "Bearer " + getToken(),
+        "Client-Id": TWITCH_CLIENT_ID
+      }
+    });
 
-  $("meName").textContent=me.display_name;
-  const g=await apiGet("me",{twitch_user_id:me.id,twitch_login:me.login,display_name:me.display_name,board:"general"});
-  $("meTotalPoints").textContent=g.points??0;
-  $("meRank").textContent=g.rank?("#"+g.rank):"—";
+    // If token expired or invalid, force logout
+    if (!r.ok) {
+      sessionStorage.removeItem("twitch_token");
+      updateAuthButtonUI();
+      $("acctLoading").classList.add("hidden");
+      $("meCard").classList.add("hidden");
+      $("loginHint").classList.remove("hidden");
+      setStatus("Session expired. Please login again.");
+      return;
+    }
 
-  $("acctLoading").classList.add("hidden");
-  $("meCard").classList.remove("hidden");
+    const tj = await r.json();
+    const me = tj.data?.[0];
+    if (!me) throw new Error("Could not read Twitch user.");
+
+    $("meName").textContent = me.display_name;
+
+    // IMPORTANT: Always ensure + read GENERAL (even if viewing another board)
+    const g = await apiGet("me", {
+      twitch_user_id: me.id,
+      twitch_login: me.login,
+      display_name: me.display_name,
+      board: "general"
+    });
+
+    $("meTotalPoints").textContent = (g.points ?? 0);
+    $("meRank").textContent = g.rank ? ("#" + g.rank) : "—";
+
+    $("acctLoading").classList.add("hidden");
+    $("meCard").classList.remove("hidden");
+  } catch (err) {
+    $("acctLoading").classList.add("hidden");
+    $("meCard").classList.add("hidden");
+    $("loginHint").classList.remove("hidden");
+    setStatus("Could not load account info. Try logging out and back in.");
+  }
 }
 
-function buildBoards(){
-  const sel=$("boardSelect");sel.innerHTML="";
-  BOARDS.forEach(b=>{
-    const o=document.createElement("option");
-    o.value=b.id;o.textContent=b.label;
-    if(b.id===currentBoard)o.selected=true;
+/** ====== BOARDS DROPDOWN ====== **/
+function buildBoards() {
+  const sel = $("boardSelect");
+  sel.innerHTML = "";
+  BOARDS.forEach(b => {
+    const o = document.createElement("option");
+    o.value = b.id;
+    o.textContent = b.label;
+    if (b.id === currentBoard) o.selected = true;
     sel.appendChild(o);
   });
-  sel.onchange=()=>{currentBoard=sel.value;localStorage.setItem("loaf_board",currentBoard);lbPage=1;refreshLeaderboard();};
+
+  sel.onchange = () => {
+    currentBoard = sel.value;
+    localStorage.setItem("loaf_board", currentBoard);
+    lbPage = 1;
+    // Refresh leaderboard for the chosen board; do NOT create user rows for it
+    refreshLeaderboard({quietIfUnchanged:false});
+  };
 }
 
-$("authBtn").onclick=()=>{
-  if(getToken()){sessionStorage.removeItem("twitch_token");location.reload();return;}
-  const state=crypto.getRandomValues(new Uint32Array(4)).join("-");
-  sessionStorage.setItem("oauth_state",state);
-  const u=new URL("https://id.twitch.tv/oauth2/authorize");
-  u.searchParams.set("client_id",TWITCH_CLIENT_ID);
-  u.searchParams.set("redirect_uri",location.origin+location.pathname.replace(/\/[^\/]*$/,"/callback.html"));
-  u.searchParams.set("response_type","token");
-  u.searchParams.set("state",state);
-  location.href=u;
+/** ====== AUTH BUTTON ====== **/
+$("authBtn").onclick = () => {
+  if (getToken()) {
+    // Logout: local-only (site token)
+    sessionStorage.removeItem("twitch_token");
+    updateAuthButtonUI();
+    setStatus("Logged out.");
+    // Refresh UI
+    refreshMe();
+    return;
+  }
+
+  // Login flow (implicit grant) -> callback.html stores token then redirects back
+  const state = crypto.getRandomValues(new Uint32Array(4)).join("-");
+  sessionStorage.setItem("oauth_state", state);
+
+  const redirect = location.origin + location.pathname.replace(/\/[^\/]*$/, "/callback.html");
+  const u = new URL("https://id.twitch.tv/oauth2/authorize");
+  u.searchParams.set("client_id", TWITCH_CLIENT_ID);
+  u.searchParams.set("redirect_uri", redirect);
+  u.searchParams.set("response_type", "token");
+  u.searchParams.set("state", state);
+  // No scopes needed to read /users with this flow
+  location.href = u.toString();
 };
 
-(async()=>{
+/** ====== Pagination ====== **/
+$("lbPrev").onclick = () => { lbPage--; renderLeaderboard(); };
+$("lbNext").onclick = () => { lbPage++; renderLeaderboard(); };
+
+/** ====== Init ====== **/
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (m) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[m]));
+}
+
+(async function init() {
+  updateAuthButtonUI();
   buildBoards();
-  $("lbPrev").onclick=()=>{lbPage--;renderLeaderboard();};
-  $("lbNext").onclick=()=>{lbPage++;renderLeaderboard();};
-  await refreshLeaderboard();
+  await refreshLeaderboard({quietIfUnchanged:false});
   await refreshMe();
-  setInterval(refreshLeaderboard,25000);
+
+  // Refresh leaderboard every 25s without spamming "Loading..."
+  setInterval(() => refreshLeaderboard({quietIfUnchanged:true}), 25000);
+
+  // Optional: refresh "me" occasionally so points update after redeems
+  setInterval(() => refreshMe(), 30000);
 })();
 </script>
 </body>
